@@ -1,0 +1,22 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"No backend tests configured yet.\"",
+    "openapi": "tsp compile specs/main.tsp",
+    "openapi:ai": "tsp compile ai-service/specs/main.tsp --config ai-service/tspconfig.yaml"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "express": "^5.3.0"
+  },
+  "devDependencies": {
+    "@typespec/compiler": "^0.60.0",
+    "@typespec/http": "^0.60.0",
+    "@typespec/openapi3": "^0.60.0"
+  }
+}

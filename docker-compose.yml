@@ -1,0 +1,14 @@
+services:
+  edge-ai:
+    build:
+      context: ./backend/ai-service
+    ports:
+      - "8001:8000"
+    environment:
+      MODEL_DATA_DIR: /data
+    volumes:
+      - motorpulse-ai-data:/data
+    restart: unless-stopped
+
+volumes:
+  motorpulse-ai-data:

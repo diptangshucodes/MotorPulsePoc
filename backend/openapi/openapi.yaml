@@ -1,0 +1,927 @@
+openapi: 3.0.0
+info:
+  title: MotorPulse Fleet Intelligence API
+  version: 0.0.0
+tags:
+  - name: Motors
+  - name: Alerts
+  - name: Maintenance
+  - name: Energy
+  - name: ROI
+  - name: Devices
+paths:
+  /alerts:
+    get:
+      operationId: Alerts_list
+      parameters:
+        - name: severity
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/AlertSeverity'
+          explode: false
+        - name: acknowledged
+          in: query
+          required: false
+          schema:
+            type: boolean
+          explode: false
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Alert'
+      tags:
+        - Alerts
+  /alerts/{alertId}/acknowledge:
+    post:
+      operationId: Alerts_acknowledge
+      parameters:
+        - name: alertId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Alert'
+      tags:
+        - Alerts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcknowledgeAlertRequest'
+  /devices:
+    get:
+      operationId: Devices_list
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Device'
+      tags:
+        - Devices
+  /devices/{deviceId}/configuration:
+    put:
+      operationId: Devices_updateConfiguration
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+      tags:
+        - Devices
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDeviceConfigRequest'
+  /energy:
+    get:
+      operationId: Energy_summary
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnergySummary'
+      tags:
+        - Energy
+  /energy/motors:
+    get:
+      operationId: Energy_byMotor
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MotorEnergy'
+      tags:
+        - Energy
+  /motors:
+    get:
+      operationId: Motors_list
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MotorSummary'
+      tags:
+        - Motors
+  /motors/emergency-stop:
+    post:
+      operationId: Motors_emergencyStop
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MotorCommand'
+      tags:
+        - Motors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmergencyStopRequest'
+  /motors/{motorId}:
+    get:
+      operationId: Motors_read
+      parameters:
+        - name: motorId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Motor'
+      tags:
+        - Motors
+  /motors/{motorId}/commands:
+    post:
+      operationId: Motors_command
+      parameters:
+        - name: motorId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MotorCommand'
+      tags:
+        - Motors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MotorCommandRequest'
+  /motors/{motorId}/diagnostics:
+    get:
+      operationId: Motors_diagnostics
+      parameters:
+        - name: motorId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MotorDiagnostics'
+      tags:
+        - Motors
+  /motors/{motorId}/mode:
+    put:
+      operationId: Motors_updateMode
+      parameters:
+        - name: motorId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Motor'
+      tags:
+        - Motors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMotorModeRequest'
+  /motors/{motorId}/speed-setpoint:
+    put:
+      operationId: Motors_updateSpeed
+      parameters:
+        - name: motorId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Motor'
+      tags:
+        - Motors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSpeedRequest'
+  /motors/{motorId}/telemetry:
+    get:
+      operationId: Motors_telemetry
+      parameters:
+        - name: motorId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+          explode: false
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+          explode: false
+        - name: interval
+          in: query
+          required: false
+          schema:
+            type: string
+          explode: false
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TelemetryPoint'
+      tags:
+        - Motors
+  /roi/forecast:
+    post:
+      operationId: Roi_forecast
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoiForecast'
+      tags:
+        - ROI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoiForecastRequest'
+  /work-orders:
+    get:
+      operationId: WorkOrders_list
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/WorkOrderStatus'
+          explode: false
+        - name: motorId
+          in: query
+          required: false
+          schema:
+            type: string
+          explode: false
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkOrder'
+      tags:
+        - Maintenance
+    post:
+      operationId: WorkOrders_create
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkOrder'
+      tags:
+        - Maintenance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkOrderRequest'
+  /work-orders/{workOrderId}:
+    get:
+      operationId: WorkOrders_read
+      parameters:
+        - name: workOrderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkOrder'
+      tags:
+        - Maintenance
+components:
+  schemas:
+    AcknowledgeAlertRequest:
+      type: object
+      required:
+        - acknowledgedBy
+      properties:
+        acknowledgedBy:
+          type: string
+        note:
+          type: string
+    Alert:
+      type: object
+      required:
+        - id
+        - motorId
+        - severity
+        - title
+        - message
+        - acknowledged
+        - createdAt
+      properties:
+        id:
+          type: string
+        motorId:
+          type: string
+        severity:
+          $ref: '#/components/schemas/AlertSeverity'
+        title:
+          type: string
+        message:
+          type: string
+        acknowledged:
+          type: boolean
+        acknowledgedBy:
+          type: string
+        createdAt:
+          type: string
+    AlertSeverity:
+      type: string
+      enum:
+        - info
+        - warning
+        - critical
+    CreateWorkOrderRequest:
+      type: object
+      required:
+        - motorId
+        - title
+        - description
+        - priority
+      properties:
+        motorId:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        priority:
+          $ref: '#/components/schemas/WorkOrderPriority'
+        recommendedAction:
+          type: string
+        sourceAlertId:
+          type: string
+        assignedTo:
+          type: string
+        dueAt:
+          type: string
+    Device:
+      type: object
+      required:
+        - id
+        - name
+        - motorId
+        - status
+        - firmwareVersion
+        - sampleRateHz
+        - lastSeenAt
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        motorId:
+          type: string
+        status:
+          type: string
+          enum:
+            - online
+            - offline
+        rssiDbm:
+          type: integer
+          format: int32
+        firmwareVersion:
+          type: string
+        sampleRateHz:
+          type: integer
+          format: int32
+        lastSeenAt:
+          type: string
+    EmergencyStopRequest:
+      type: object
+      required:
+        - requestedBy
+        - reason
+        - requireConfirmation
+      properties:
+        requestedBy:
+          type: string
+        reason:
+          type: string
+        requireConfirmation:
+          type: boolean
+    EnergySummary:
+      type: object
+      required:
+        - measuredAt
+        - totalPowerKw
+        - consumptionTodayKwh
+        - estimatedCostToday
+        - carbonFootprintKgCo2
+        - efficiencyDriftPercent
+      properties:
+        measuredAt:
+          type: string
+        totalPowerKw:
+          type: number
+          format: double
+        consumptionTodayKwh:
+          type: number
+          format: double
+        estimatedCostToday:
+          type: number
+          format: double
+        carbonFootprintKgCo2:
+          type: number
+          format: double
+        efficiencyDriftPercent:
+          type: number
+          format: double
+    FaultProbability:
+      type: object
+      required:
+        - fault
+        - probability
+      properties:
+        fault:
+          type: string
+        probability:
+          type: number
+          format: double
+    Motor:
+      type: object
+      required:
+        - gatewayId
+      properties:
+        manufacturer:
+          type: string
+        modelNumber:
+          type: string
+        ratedPowerKw:
+          type: number
+          format: double
+        installDate:
+          type: string
+        gatewayId:
+          type: string
+      allOf:
+        - $ref: '#/components/schemas/MotorSummary'
+    MotorCommand:
+      type: object
+      required:
+        - id
+        - motorId
+        - command
+        - status
+        - requestedBy
+        - requestedAt
+      properties:
+        id:
+          type: string
+        motorId:
+          type: string
+        command:
+          type: string
+          enum:
+            - start
+            - stop
+        status:
+          type: string
+          enum:
+            - queued
+            - accepted
+            - rejected
+            - completed
+        requestedBy:
+          type: string
+        requestedAt:
+          type: string
+        message:
+          type: string
+    MotorCommandRequest:
+      type: object
+      required:
+        - command
+        - requestedBy
+        - requireConfirmation
+      properties:
+        command:
+          type: string
+          enum:
+            - start
+            - stop
+        requestedBy:
+          type: string
+        reason:
+          type: string
+        requireConfirmation:
+          type: boolean
+    MotorDiagnostics:
+      type: object
+      required:
+        - motorId
+        - healthScore
+        - anomalyScore
+        - confidence
+        - modelStatus
+        - explanation
+        - faultProbabilities
+        - analyzedAt
+      properties:
+        motorId:
+          type: string
+        healthScore:
+          type: integer
+          format: int32
+        anomalyScore:
+          type: number
+          format: double
+        confidence:
+          type: number
+          format: double
+        estimatedDaysToFailure:
+          type: integer
+          format: int32
+        modelStatus:
+          type: string
+        explanation:
+          type: string
+        faultProbabilities:
+          type: array
+          items:
+            $ref: '#/components/schemas/FaultProbability'
+        analyzedAt:
+          type: string
+    MotorEnergy:
+      type: object
+      required:
+        - motorId
+        - motorName
+        - powerKw
+        - consumptionTodayKwh
+        - estimatedCostToday
+        - efficiencyPercent
+      properties:
+        motorId:
+          type: string
+        motorName:
+          type: string
+        powerKw:
+          type: number
+          format: double
+        consumptionTodayKwh:
+          type: number
+          format: double
+        estimatedCostToday:
+          type: number
+          format: double
+        efficiencyPercent:
+          type: number
+          format: double
+        diagnosis:
+          type: string
+    MotorStatus:
+      type: string
+      enum:
+        - healthy
+        - warning
+        - critical
+        - offline
+    MotorSummary:
+      type: object
+      required:
+        - id
+        - name
+        - area
+        - status
+        - healthScore
+        - rpm
+        - temperatureC
+        - currentAmps
+        - vibrationMmPerSec
+        - powerKw
+        - mode
+        - speedSetpointRpm
+        - running
+        - lastSeenAt
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        area:
+          type: string
+        status:
+          $ref: '#/components/schemas/MotorStatus'
+        healthScore:
+          type: integer
+          format: int32
+        rpm:
+          type: integer
+          format: int32
+        temperatureC:
+          type: number
+          format: double
+        currentAmps:
+          type: number
+          format: double
+        vibrationMmPerSec:
+          type: number
+          format: double
+        powerKw:
+          type: number
+          format: double
+        mode:
+          $ref: '#/components/schemas/OperatingMode'
+        speedSetpointRpm:
+          type: integer
+          format: int32
+        running:
+          type: boolean
+        lastSeenAt:
+          type: string
+    OperatingMode:
+      type: string
+      enum:
+        - manual
+        - scheduled
+        - ai-assisted
+    RoiForecast:
+      type: object
+      required:
+        - reportingPeriodMonths
+        - avoidedDowntimeHours
+        - avoidedDowntimeCost
+        - energyWasteSaved
+        - maintenanceCostAvoided
+        - estimatedTotalSavings
+        - estimatedRoiMultiple
+        - estimatedPaybackMonths
+      properties:
+        reportingPeriodMonths:
+          type: integer
+          format: int32
+        avoidedDowntimeHours:
+          type: number
+          format: double
+        avoidedDowntimeCost:
+          type: number
+          format: double
+        energyWasteSaved:
+          type: number
+          format: double
+        maintenanceCostAvoided:
+          type: number
+          format: double
+        estimatedTotalSavings:
+          type: number
+          format: double
+        estimatedRoiMultiple:
+          type: number
+          format: double
+        estimatedPaybackMonths:
+          type: number
+          format: double
+    RoiForecastRequest:
+      type: object
+      required:
+        - inputs
+        - avoidedDowntimeHours
+        - avoidedFailures
+        - reportingPeriodMonths
+      properties:
+        inputs:
+          $ref: '#/components/schemas/RoiInputs'
+        avoidedDowntimeHours:
+          type: number
+          format: double
+        avoidedFailures:
+          type: integer
+          format: int32
+        reportingPeriodMonths:
+          type: integer
+          format: int32
+    RoiInputs:
+      type: object
+      required:
+        - downtimeCostPerHour
+        - plannedRepairCost
+        - motorReplacementCost
+        - energyTariffPerKwh
+        - unplannedRepairCost
+        - technicianHourlyRate
+      properties:
+        downtimeCostPerHour:
+          type: number
+          format: double
+        plannedRepairCost:
+          type: number
+          format: double
+        motorReplacementCost:
+          type: number
+          format: double
+        energyTariffPerKwh:
+          type: number
+          format: double
+        unplannedRepairCost:
+          type: number
+          format: double
+        technicianHourlyRate:
+          type: number
+          format: double
+    TelemetryPoint:
+      type: object
+      required:
+        - timestamp
+        - rpm
+        - temperatureC
+        - currentAmps
+        - vibrationMmPerSec
+        - powerKw
+      properties:
+        timestamp:
+          type: string
+        rpm:
+          type: integer
+          format: int32
+        temperatureC:
+          type: number
+          format: double
+        currentAmps:
+          type: number
+          format: double
+        vibrationMmPerSec:
+          type: number
+          format: double
+        powerKw:
+          type: number
+          format: double
+    UpdateDeviceConfigRequest:
+      type: object
+      required:
+        - sampleRateHz
+      properties:
+        sampleRateHz:
+          type: integer
+          format: int32
+    UpdateMotorModeRequest:
+      type: object
+      required:
+        - mode
+      properties:
+        mode:
+          $ref: '#/components/schemas/OperatingMode'
+    UpdateSpeedRequest:
+      type: object
+      required:
+        - speedSetpointRpm
+      properties:
+        speedSetpointRpm:
+          type: integer
+          format: int32
+    WorkOrder:
+      type: object
+      required:
+        - id
+        - motorId
+        - title
+        - description
+        - priority
+        - status
+        - createdAt
+      properties:
+        id:
+          type: string
+        motorId:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        priority:
+          $ref: '#/components/schemas/WorkOrderPriority'
+        status:
+          $ref: '#/components/schemas/WorkOrderStatus'
+        recommendedAction:
+          type: string
+        sourceAlertId:
+          type: string
+        assignedTo:
+          type: string
+        dueAt:
+          type: string
+        createdAt:
+          type: string
+    WorkOrderPriority:
+      type: string
+      enum:
+        - low
+        - normal
+        - high
+        - urgent
+    WorkOrderStatus:
+      type: string
+      enum:
+        - open
+        - in-progress
+        - completed
+        - cancelled
+servers:
+  - url: http://localhost:5000/api/v1
+    description: Local development server
+    variables: {}

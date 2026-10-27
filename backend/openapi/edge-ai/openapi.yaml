@@ -1,0 +1,194 @@
+openapi: 3.0.0
+info:
+  title: MotorPulse Edge AI API
+  version: 0.0.0
+tags:
+  - name: Health
+  - name: Edge AI
+paths:
+  /health:
+    get:
+      operationId: Health_check
+      parameters: []
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  service:
+                    type: string
+                required:
+                  - status
+                  - service
+      tags:
+        - Health
+  /v1/motors/{motorId}/analyze:
+    post:
+      operationId: MotorAnalysis_analyzeWindow
+      parameters:
+        - name: motorId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnomalyAnalysis'
+      tags:
+        - Edge AI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SensorWindow'
+  /v1/motors/{motorId}/baseline:
+    post:
+      operationId: MotorAnalysis_learnHealthyBaseline
+      parameters:
+        - name: motorId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The request has succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearnedBaseline'
+      tags:
+        - Edge AI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HealthyBaselineRequest'
+components:
+  schemas:
+    AnalyzedFeatures:
+      type: object
+      required:
+        - vibrationRmsMmS
+        - vibrationPeakToPeakMmS
+        - dominantFrequencyHz
+        - temperatureC
+        - currentAmps
+      properties:
+        vibrationRmsMmS:
+          type: number
+          format: double
+        vibrationPeakToPeakMmS:
+          type: number
+          format: double
+        dominantFrequencyHz:
+          type: number
+          format: double
+        temperatureC:
+          type: number
+          format: double
+        currentAmps:
+          type: number
+          format: double
+    AnomalyAnalysis:
+      type: object
+      required:
+        - motorId
+        - status
+        - anomalyScore
+        - confidence
+        - explanation
+        - contributingFeature
+        - features
+      properties:
+        motorId:
+          type: string
+        status:
+          type: string
+          enum:
+            - normal
+            - warning
+            - critical
+        anomalyScore:
+          type: number
+          format: double
+        confidence:
+          type: string
+          enum:
+            - baseline
+        explanation:
+          type: string
+        contributingFeature:
+          type: string
+        features:
+          $ref: '#/components/schemas/AnalyzedFeatures'
+    HealthyBaselineRequest:
+      type: object
+      required:
+        - windows
+      properties:
+        windows:
+          type: array
+          items:
+            $ref: '#/components/schemas/SensorWindow'
+    LearnedBaseline:
+      type: object
+      required:
+        - motorId
+        - healthyWindows
+        - features
+        - saved
+      properties:
+        motorId:
+          type: string
+        healthyWindows:
+          type: integer
+          format: int32
+        features:
+          type: object
+          additionalProperties:
+            type: number
+            format: double
+        saved:
+          type: boolean
+    SensorWindow:
+      type: object
+      required:
+        - vibrationSamples
+        - sampleRateHz
+        - rpm
+        - temperatureC
+        - currentAmps
+      properties:
+        vibrationSamples:
+          type: array
+          items:
+            type: number
+            format: double
+        sampleRateHz:
+          type: number
+          format: double
+        rpm:
+          type: number
+          format: double
+        temperatureC:
+          type: number
+          format: double
+        currentAmps:
+          type: number
+          format: double
+servers:
+  - url: http://localhost:8001
+    description: Local edge AI service
+    variables: {}
