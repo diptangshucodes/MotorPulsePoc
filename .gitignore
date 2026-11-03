@@ -59,3 +59,6 @@ Desktop.ini
 
 # Local logs
 *.log
+
+# PlatformIO firmware build output
+/wokwi_simulator/.pio/
