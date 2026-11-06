@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import LiveTelemetry from './LiveTelemetry';
 import './App.css';
+import './LiveTelemetry.css';
 
 const initialMotors = [
   { id: 'M-48201', name: 'Pump Motor A1', area: 'Production line · North', status: 'healthy', health: 98, rpm: 1747, temp: 42.8, current: 45.3, vibration: 1.2, power: 2.45, mode: 'AI-assisted', speed: 1745, running: true },
@@ -23,6 +25,7 @@ const initialAlerts = [
 const navItems = [
   { id: 'overview', label: 'Fleet overview', icon: 'grid' },
   { id: 'detail', label: 'Motor detail', icon: 'pulse' },
+  { id: 'telemetry', label: 'Live sensor', icon: 'pulse' },
   { id: 'control', label: 'Control panel', icon: 'sliders' },
   { id: 'alerts', label: 'Alerts & maintenance', icon: 'bell' },
   { id: 'energy', label: 'Energy', icon: 'bolt' },
@@ -193,6 +196,8 @@ function App() {
     </>
   );
 
+  const renderTelemetry = () => <LiveTelemetry />;
+
   const renderDetail = () => (
     <>
       <SectionTitle eyebrow="ASSET / LIVE DIAGNOSTICS" title={selectedMotor.name} description={`${selectedMotor.id} · ${selectedMotor.area}`} actions={<><span className={`status-pill status-pill-${selectedMotor.status}`}><i />{selectedMotor.status}</span><button className="button button-primary" onClick={() => setScreen('control')}><Icon name="sliders" size={15} /> Control panel</button></>} />
@@ -259,7 +264,7 @@ function App() {
     </>
   );
 
-  const content = { overview: renderOverview, detail: renderDetail, control: renderControl, roi: renderRoi, alerts: renderAlerts, energy: renderEnergy }[screen]();
+  const content = { overview: renderOverview, detail: renderDetail, telemetry: renderTelemetry, control: renderControl, roi: renderRoi, alerts: renderAlerts, energy: renderEnergy }[screen]();
   const modalMotor = motors.find((motor) => motor.id === modal?.motorId);
   return (
     <div className="app-shell">

@@ -1,0 +1,57 @@
+.live-telemetry { display: grid; gap: 14px; }
+.live-telemetry-heading { align-items: center; display: flex; gap: 18px; justify-content: space-between; margin-bottom: 4px; }
+.live-telemetry-heading h1 { color: #1b293b; font-size: 22px; font-weight: 650; letter-spacing: -.5px; margin: 4px 0 5px; }
+.live-telemetry-heading p { color: #8290a0; font-size: 11px; margin: 0; }
+.telemetry-connection { align-items: center; color: #ae7c24; display: inline-flex; flex: 0 0 auto; font-size: 10px; gap: 7px; }
+.telemetry-connection i { background: #d7a23d; border-radius: 50%; height: 7px; width: 7px; }
+.telemetry-connection.is-connected { color: #16866f; }
+.telemetry-connection.is-connected i { background: #26b887; }
+.telemetry-notice { align-items: flex-start; background: #fff8e9; border: 1px solid #f0dfb8; border-radius: 7px; color: #806b43; display: flex; font-size: 10px; gap: 11px; line-height: 1.5; padding: 11px 13px; }
+.telemetry-notice strong { background: #f7e8c5; border-radius: 4px; color: #8d6721; flex: 0 0 auto; font-size: 8px; letter-spacing: .45px; padding: 4px 6px; }
+.telemetry-error { background: #fff1f1; border: 1px solid #f1d2d4; border-radius: 7px; color: #a34148; font-size: 10px; line-height: 1.6; padding: 11px 13px; }
+.telemetry-error code { background: #fff; border-radius: 3px; padding: 2px 4px; }
+.telemetry-error span { display: block; margin-top: 3px; opacity: .8; }
+.telemetry-kpis { display: grid; gap: 10px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.telemetry-kpi { min-height: 78px; padding: 13px 14px; }
+.telemetry-kpi > span, .telemetry-kpi > small { color: #8490a0; display: block; font-size: 9px; }
+.telemetry-kpi > strong { color: #188d7e; display: block; font-size: 17px; font-weight: 650; margin-top: 8px; }
+.telemetry-kpi > small { font-size: 8px; margin-top: 3px; }
+.telemetry-chart-panel { min-width: 0; padding: 15px 16px 12px; }
+.telemetry-chart-panel .panel-title { min-height: 34px; }
+.telemetry-legend { align-items: center; display: flex; gap: 11px; }
+.telemetry-legend span { font-size: 9px; font-weight: 700; }
+.axis-x { color: #129a8c; }
+.axis-y { color: #5685d3; }
+.axis-z { color: #dc9a32; }
+.axis-vector { stroke: #13998d; }
+.live-acceleration-chart { display: block; height: auto; margin-top: 10px; overflow: visible; width: 100%; }
+.live-chart-gridline { stroke: #e9edef; stroke-dasharray: 2 3; stroke-width: .5; }
+.live-chart-axis { stroke: #d9e0e4; stroke-width: .65; }
+.live-chart-label { fill: #8b96a2; font-family: inherit; font-size: 9px; }
+.live-chart-axis-title { fill: #8b96a2; font-family: inherit; font-size: 8px; }
+.live-chart-line { fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+.live-chart-line.axis-x { stroke: #129a8c; }
+.live-chart-line.axis-y { stroke: #5685d3; }
+.live-chart-line.axis-z { stroke: #dc9a32; }
+.live-chart-empty { align-items: center; color: #8995a3; display: flex; font-size: 10px; height: 210px; justify-content: center; }
+.live-history-chart { display: block; height: 135px; margin-top: 16px; overflow: visible; width: 100%; }
+.live-history-chart .live-chart-line { stroke-width: 1.4; }
+.telemetry-history-caption { color: #929ca8; display: flex; font-size: 8px; justify-content: space-between; margin-top: 5px; }
+.telemetry-axis-metrics { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.telemetry-axis-card { padding: 13px 14px 10px; }
+.telemetry-axis-card h2 { color: #354357; font-size: 11px; margin: 0 0 9px; }
+.telemetry-axis-card p { align-items: center; border-top: 1px solid #f0f2f4; color: #8290a0; display: flex; font-size: 9px; justify-content: space-between; margin: 0; padding: 7px 0; }
+.telemetry-axis-card p strong { color: #405064; font-size: 9px; font-weight: 600; }
+@media (max-width: 850px) {
+  .telemetry-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .live-telemetry-heading { align-items: flex-start; flex-direction: column; }
+  .live-telemetry-heading h1 { font-size: 19px; }
+  .telemetry-kpis { gap: 7px; }
+  .telemetry-kpi { padding: 11px; }
+  .telemetry-kpi > strong { font-size: 14px; }
+  .telemetry-notice { flex-direction: column; gap: 7px; }
+  .telemetry-axis-metrics { grid-template-columns: 1fr; }
+  .telemetry-chart-panel { padding: 12px 10px; }
+}

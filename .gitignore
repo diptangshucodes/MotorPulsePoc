@@ -59,6 +59,7 @@ Desktop.ini
 
 # Local logs
 *.log
+/telemetry.sqlite3*
 
 # PlatformIO firmware build output
 /wokwi_simulator/.pio/
