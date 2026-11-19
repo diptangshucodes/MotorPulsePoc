@@ -1,89 +1,136 @@
 import { useEffect, useMemo, useState } from 'react';
 
-const API_BASE_URL = process.env.REACT_APP_TELEMETRY_API_URL || 'http://localhost:8002';
+const API_BASE_URL = process.env.REACT_APP_TELEMETRY_API_URL || 'http://127.0.0.1:8002';
 const MOTOR_ID = 'motor-01';
-const POLL_INTERVAL_MS = 1500;
+const POLL_INTERVAL_MS = 100;
+const MOTION_RMS_THRESHOLD_MS2 = 0.12;
+const MOTION_PEAK_THRESHOLD_MS2 = 0.3;
+const VECTOR_DISPLAY_LIMIT_MS2 = 19.62;
 
 function formatValue(value, digits = 3) {
   return Number.isFinite(value) ? value.toFixed(digits) : '—';
 }
 
-function AccelerationChart({ samples }) {
-  const chart = useMemo(() => {
+function Acceleration3DView({ samples, history }) {
+  const view = useMemo(() => {
     if (!samples.length) return null;
 
-    const values = samples.flatMap((sample) => [sample.x_ms2, sample.y_ms2, sample.z_ms2]);
-    let min = Math.min(...values);
-    let max = Math.max(...values);
-    const padding = Math.max((max - min) * 0.12, Math.max(Math.abs(min), Math.abs(max)) * 0.025, 0.1);
-    min -= padding;
-    max += padding;
-
-    const left = 58;
-    const right = 790;
-    const top = 18;
-    const bottom = 220;
-    const duration = Math.max(samples[samples.length - 1].offset_s, 0.001);
-    const x = (offset) => left + (offset / duration) * (right - left);
-    const y = (value) => bottom - ((value - min) / (max - min)) * (bottom - top);
-    const line = (axis) => samples
-      .map((sample) => `${x(sample.offset_s)},${y(sample[axis])}`)
-      .join(' ');
-
+    const axes = ['x_ms2', 'y_ms2', 'z_ms2'];
+    const acceleration = axes.map((axis) => samples[samples.length - 1][axis]);
+    const historyReadings = history
+      .map((entry) => entry.acceleration)
+      .filter((reading) => reading && axes.every((axis) => Number.isFinite(reading[axis])));
+    const recentReadings = (historyReadings.length ? historyReadings : samples).slice(-6);
+    const changes = recentReadings.slice(1).map((reading, index) =>
+      Math.sqrt(axes.reduce(
+        (sum, axis) => sum + (reading[axis] - recentReadings[index][axis]) ** 2,
+        0,
+      )),
+    );
+    const changeRms = changes.length
+      ? Math.sqrt(changes.reduce((sum, value) => sum + value ** 2, 0) / changes.length)
+      : 0;
+    const motionDetected = changeRms >= MOTION_RMS_THRESHOLD_MS2
+      || Math.max(0, ...changes) >= MOTION_PEAK_THRESHOLD_MS2;
+    const magnitude = Math.sqrt(acceleration.reduce((sum, value) => sum + value ** 2, 0));
+    const displayScale = magnitude > VECTOR_DISPLAY_LIMIT_MS2
+      ? VECTOR_DISPLAY_LIMIT_MS2 / magnitude
+      : 1;
+    const center = { x: 410, y: 170 };
+    const pixelsPerMs2 = 70 / 9.81;
+    const project = (x, y, z) => ({
+      x: center.x + (x - y) * Math.sqrt(3) / 2 * pixelsPerMs2,
+      y: center.y + (x + y) * 0.5 * pixelsPerMs2 - z * pixelsPerMs2,
+    });
+    const vectorEnd = project(
+      acceleration[0] * displayScale,
+      acceleration[1] * displayScale,
+      acceleration[2] * displayScale,
+    );
     return {
-      min,
-      max,
-      top,
-      bottom,
-      left,
-      right,
-      middle: (top + bottom) / 2,
-      xLabels: [0, duration / 2, duration],
-      x,
-      y,
-      lines: [
-        { axis: 'x_ms2', label: 'X', className: 'axis-x' },
-        { axis: 'y_ms2', label: 'Y', className: 'axis-y' },
-        { axis: 'z_ms2', label: 'Z', className: 'axis-z' },
-      ].map((axis) => ({ ...axis, points: line(axis.axis) })),
+      acceleration,
+      magnitude,
+      motionDetected,
+      center,
+      vectorEnd,
+      axes: [
+        { name: 'X', className: 'axis-x', direction: [1, 0, 0] },
+        { name: 'Y', className: 'axis-y', direction: [0, 1, 0] },
+        { name: 'Z', className: 'axis-z', direction: [0, 0, 1] },
+      ].map((axis) => ({
+        ...axis,
+        positiveEnd: project(
+          axis.direction[0] * VECTOR_DISPLAY_LIMIT_MS2,
+          axis.direction[1] * VECTOR_DISPLAY_LIMIT_MS2,
+          axis.direction[2] * VECTOR_DISPLAY_LIMIT_MS2,
+        ),
+        negativeEnd: project(
+          -axis.direction[0] * VECTOR_DISPLAY_LIMIT_MS2,
+          -axis.direction[1] * VECTOR_DISPLAY_LIMIT_MS2,
+          -axis.direction[2] * VECTOR_DISPLAY_LIMIT_MS2,
+        ),
+      })),
     };
-  }, [samples]);
+  }, [history, samples]);
 
-  if (!chart) {
-    return <div className="live-chart-empty">Waiting for the first MQTT sample window…</div>;
+  if (!view) {
+    return <div className="live-chart-empty">Waiting for the first MQTT reading…</div>;
   }
 
   return (
-    <svg
-      className="live-acceleration-chart"
-      viewBox="0 0 820 260"
-      role="img"
-      aria-label="Latest X, Y, and Z acceleration samples in meters per second squared"
-    >
-      {[chart.top, chart.middle, chart.bottom].map((lineY) => (
-        <line key={lineY} x1={chart.left} x2={chart.right} y1={lineY} y2={lineY} className="live-chart-gridline" />
-      ))}
-      {[chart.max, (chart.max + chart.min) / 2, chart.min].map((value, index) => {
-        const labelY = [chart.top + 4, chart.middle + 4, chart.bottom + 4][index];
-        return <text key={index} x={chart.left - 9} y={labelY} textAnchor="end" className="live-chart-label">{formatValue(value, 2)}</text>;
-      })}
-      <line x1={chart.left} x2={chart.right} y1={chart.bottom} y2={chart.bottom} className="live-chart-axis" />
-      {chart.lines.map((line) => (
-        <polyline key={line.axis} points={line.points} className={`live-chart-line ${line.className}`} />
-      ))}
-      {chart.xLabels.map((label, index) => (
-        <text
-          key={index}
-          x={chart.x(label)}
-          y="244"
-          textAnchor={index === 0 ? 'start' : index === chart.xLabels.length - 1 ? 'end' : 'middle'}
-          className="live-chart-label"
-        >
-          {label.toFixed(2)} s
+    <div className="live-3d-view">
+      <div className={`telemetry-motion-status ${view.motionDetected ? 'is-moving' : 'is-still'}`} role="status">
+        <i />
+        {view.motionDetected ? 'Motion detected' : 'Still · noise filtered'}
+      </div>
+      <svg
+        className="live-3d-chart"
+        viewBox="0 0 820 360"
+        role="img"
+        aria-label={`3D acceleration vector on X, Y, and Z axes${view.motionDetected ? ', motion detected' : ', sensor still'}`}
+      >
+        <defs>
+          <marker id="acceleration-vector-arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 Z" className="live-3d-vector-arrow" />
+          </marker>
+        </defs>
+        <circle cx={view.center.x} cy={view.center.y} r={70} className="live-3d-reference" />
+        {view.axes.map((axis) => (
+          <g key={axis.name} className={`live-3d-axis ${axis.className}`}>
+            <line
+              x1={axis.negativeEnd.x}
+              y1={axis.negativeEnd.y}
+              x2={axis.positiveEnd.x}
+              y2={axis.positiveEnd.y}
+            />
+            <text x={axis.positiveEnd.x + (axis.name === 'Y' ? -12 : 7)} y={axis.positiveEnd.y - 7}>
+              {axis.name}
+            </text>
+          </g>
+        ))}
+        <line
+          id="acceleration-vector"
+          x1={view.center.x}
+          y1={view.center.y}
+          x2={view.vectorEnd.x}
+          y2={view.vectorEnd.y}
+          className="live-3d-vector"
+          markerEnd="url(#acceleration-vector-arrow)"
+        />
+        <circle cx={view.center.x} cy={view.center.y} r="4" className="live-3d-origin" />
+        <text x={view.center.x + 82} y={view.center.y - 50} className="live-3d-label">1 g reference</text>
+        <text x={view.center.x + 82} y={view.center.y - 35} className="live-3d-label">Axes scaled to ±2 g</text>
+        <text x={view.center.x} y="344" textAnchor="middle" className="live-chart-axis-title">
+          Arrow follows the latest raw acceleration reading
         </text>
-      ))}
-      <text x="424" y="258" textAnchor="middle" className="live-chart-axis-title">Time within latest sample window</text>
-    </svg>
+        {view.acceleration.map((value, index) => (
+          <text key={index} x={260 + index * 100} y="325" textAnchor="middle" className={`live-3d-value ${view.axes[index].className}`}>
+            {view.axes[index].name}: {formatValue(value / 9.81, 2)} g
+          </text>
+        ))}
+        <text x="560" y="325" className="live-3d-value">|a|: {formatValue(view.magnitude / 9.81, 2)} g</text>
+      </svg>
+    </div>
   );
 }
 
@@ -91,7 +138,13 @@ function AccelerationHistoryChart({ history }) {
   const points = useMemo(() => {
     if (!history.length) return '';
 
-    const values = history.map((entry) => entry.features.accel_vector_rms_ms2);
+    const values = history.map((entry) => {
+      if (entry.acceleration) {
+        const { x_ms2, y_ms2, z_ms2 } = entry.acceleration;
+        return Math.sqrt(x_ms2 ** 2 + y_ms2 ** 2 + z_ms2 ** 2);
+      }
+      return entry.features?.accel_vector_rms_ms2 ?? 0;
+    });
     const maximum = Math.max(...values, 0.1);
     return values.map((value, index) => {
       const x = history.length === 1 ? 50 : (index / (history.length - 1)) * 100;
@@ -106,7 +159,7 @@ function AccelerationHistoryChart({ history }) {
       viewBox="0 0 100 60"
       preserveAspectRatio="none"
       role="img"
-      aria-label="Recent vector dynamic acceleration RMS by sample window"
+      aria-label="Recent raw acceleration magnitude by MQTT reading"
     >
       {[10, 30, 50].map((line) => (
         <line key={line} x1="0" x2="100" y1={line} y2={line} className="live-chart-gridline" />
@@ -125,10 +178,12 @@ export default function LiveTelemetry() {
   useEffect(() => {
     let active = true;
     let requestInProgress = false;
+    let timeoutId;
 
     const refresh = async () => {
       if (requestInProgress) return;
       requestInProgress = true;
+      let nextDelay = POLL_INTERVAL_MS;
       try {
         const response = await fetch(`${API_BASE_URL}/api/motors/${MOTOR_ID}/telemetry?limit=60`);
         if (!response.ok) {
@@ -141,24 +196,36 @@ export default function LiveTelemetry() {
           setUpdatedAt(new Date());
         }
       } catch (requestError) {
-        if (active) setError(requestError.message || 'Could not connect to the telemetry service.');
+        nextDelay = 3000;
+        if (active) {
+          setError(requestError.message || 'Could not connect to the telemetry service.');
+        }
       } finally {
         requestInProgress = false;
+        if (active) timeoutId = window.setTimeout(refresh, nextDelay);
       }
     };
 
     refresh();
-    const intervalId = window.setInterval(refresh, POLL_INTERVAL_MS);
     return () => {
       active = false;
-      window.clearInterval(intervalId);
+      window.clearTimeout(timeoutId);
     };
   }, []);
 
   const latest = snapshot?.latest;
   const isFresh = latest && Date.now() - Date.parse(latest.received_at) < 10_000;
-  const features = latest?.features;
+  const isBrokerConnected = snapshot?.mqtt_connected;
   const isRealSource = latest?.data_source === 'real';
+  const connectionText = error
+    ? 'Telemetry API unavailable'
+    : isBrokerConnected === false
+      ? 'API online · MQTT disconnected'
+      : isFresh
+        ? 'Receiving live readings'
+        : isBrokerConnected
+          ? 'Broker connected · waiting for readings'
+          : 'Waiting for sensor data';
 
   return (
     <section className="live-telemetry">
@@ -166,11 +233,11 @@ export default function LiveTelemetry() {
         <div>
           <span className="eyebrow">DEVICE / MQTT STREAM</span>
           <h1>Live sensor · Motor 01</h1>
-          <p>ESP32 MPU6050 acceleration windows from the local MQTT database.</p>
+          <p>Live ESP32 MPU6050 readings from the local MQTT database.</p>
         </div>
-        <div className={`telemetry-connection ${isFresh ? 'is-connected' : ''}`} role="status">
+        <div className={`telemetry-connection ${isFresh && isBrokerConnected !== false ? 'is-connected' : ''}`} role="status">
           <i />
-          {isFresh ? 'Receiving live windows' : 'Waiting for sensor data'}
+          {connectionText}
         </div>
       </header>
 
@@ -185,7 +252,7 @@ export default function LiveTelemetry() {
 
       {error && (
         <div className="telemetry-error" role="alert">
-          <strong>Telemetry API unavailable.</strong> Start <code>python mqtt_client.py</code> from the repository root.
+          <strong>Can’t reach the telemetry API at {API_BASE_URL}.</strong> Keep <code>python mqtt_client.py</code> running in a repository-root terminal.
           <span>{error}</span>
         </div>
       )}
@@ -196,15 +263,19 @@ export default function LiveTelemetry() {
           <strong>{latest ? `${latest.sample_rate_hz} Hz` : '—'}</strong>
         </article>
         <article className="panel telemetry-kpi">
-          <span>Samples per window</span>
-          <strong>{latest?.sample_count ?? '—'}</strong>
+          <span>MQTT payload</span>
+          <strong>{latest ? 'Single raw reading' : '—'}</strong>
         </article>
         <article className="panel telemetry-kpi">
-          <span>Vector dynamic acceleration RMS</span>
-          <strong>{features ? `${formatValue(features.accel_vector_rms_ms2)} m/s²` : '—'}</strong>
+          <span>Acceleration magnitude</span>
+          <strong>{latest?.samples?.length ? `${formatValue(Math.sqrt(
+            latest.samples[latest.samples.length - 1].x_ms2 ** 2
+            + latest.samples[latest.samples.length - 1].y_ms2 ** 2
+            + latest.samples[latest.samples.length - 1].z_ms2 ** 2,
+          ))} m/s²` : '—'}</strong>
         </article>
         <article className="panel telemetry-kpi">
-          <span>Last MQTT window</span>
+          <span>Last raw reading</span>
           <strong>{latest ? new Date(latest.received_at).toLocaleTimeString() : '—'}</strong>
           <small>{updatedAt ? `Refreshed ${updatedAt.toLocaleTimeString()}` : 'Polling local service'}</small>
         </article>
@@ -213,8 +284,8 @@ export default function LiveTelemetry() {
       <article className="panel telemetry-chart-panel">
         <div className="panel-title">
           <div>
-            <h2>Latest acceleration waveform</h2>
-            <span className="subtle">128 raw readings · X, Y, and Z · m/s²</span>
+            <h2>3D acceleration vector</h2>
+            <span className="subtle">The arrow follows the latest raw X, Y, and Z reading with no window averaging</span>
           </div>
           <div className="telemetry-legend">
             <span className="axis-x">X</span>
@@ -222,37 +293,45 @@ export default function LiveTelemetry() {
             <span className="axis-z">Z</span>
           </div>
         </div>
-        <AccelerationChart samples={latest?.samples || []} />
+        <Acceleration3DView samples={latest?.samples || []} history={snapshot?.history || []} />
       </article>
 
       <article className="panel telemetry-chart-panel">
         <div className="panel-title">
           <div>
             <h2>Acceleration trend</h2>
-            <span className="subtle">Mean-centered vector RMS for recent MQTT windows · m/s²</span>
+            <span className="subtle">Raw acceleration magnitude from recent MQTT readings · m/s²</span>
           </div>
           <span className="chart-live"><i className="live-dot" /> POLLING</span>
         </div>
         <AccelerationHistoryChart history={snapshot?.history || []} />
         <div className="telemetry-history-caption">
-          <span>{snapshot?.history?.length || 0} windows</span>
+          <span>{snapshot?.history?.length || 0} readings</span>
           <span>Updates every {POLL_INTERVAL_MS / 1000} seconds</span>
         </div>
       </article>
 
       <div className="telemetry-axis-metrics">
         {[
-          ['X axis', 'accel_x_mean_ms2', 'accel_x_rms_ms2', 'accel_x_peak_to_peak_ms2'],
-          ['Y axis', 'accel_y_mean_ms2', 'accel_y_rms_ms2', 'accel_y_peak_to_peak_ms2'],
-          ['Z axis', 'accel_z_mean_ms2', 'accel_z_rms_ms2', 'accel_z_peak_to_peak_ms2'],
-        ].map(([axis, meanKey, rmsKey, peakKey]) => (
-          <article className="panel telemetry-axis-card" key={axis}>
-            <h2>{axis}</h2>
-            <p>Mean acceleration <strong>{features ? `${formatValue(features[meanKey])} m/s²` : '—'}</strong></p>
-            <p>Dynamic RMS <strong>{features ? `${formatValue(features[rmsKey])} m/s²` : '—'}</strong></p>
-            <p>Peak-to-peak <strong>{features ? `${formatValue(features[peakKey])} m/s²` : '—'}</strong></p>
-          </article>
-        ))}
+          ['X axis', 'x_ms2'],
+          ['Y axis', 'y_ms2'],
+          ['Z axis', 'z_ms2'],
+        ].map(([axis, sampleKey]) => {
+          const currentSample = latest?.samples?.[latest.samples.length - 1];
+          const previousHistory = snapshot?.history || [];
+          const previousSample = previousHistory.length > 1
+            ? previousHistory[previousHistory.length - 2].acceleration
+            : null;
+          const currentValue = currentSample?.[sampleKey];
+          const previousValue = previousSample?.[sampleKey];
+          return (
+            <article className="panel telemetry-axis-card" key={axis}>
+              <h2>{axis}</h2>
+              <p>Raw acceleration <strong>{Number.isFinite(currentValue) ? `${formatValue(currentValue)} m/s²` : '—'}</strong></p>
+              <p>Change since previous reading <strong>{Number.isFinite(currentValue) && Number.isFinite(previousValue) ? `${formatValue(currentValue - previousValue)} m/s²` : '—'}</strong></p>
+            </article>
+          );
+        })}
       </div>
     </section>
   );

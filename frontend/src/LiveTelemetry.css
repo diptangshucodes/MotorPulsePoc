@@ -24,7 +24,6 @@
 .axis-y { color: #5685d3; }
 .axis-z { color: #dc9a32; }
 .axis-vector { stroke: #13998d; }
-.live-acceleration-chart { display: block; height: auto; margin-top: 10px; overflow: visible; width: 100%; }
 .live-chart-gridline { stroke: #e9edef; stroke-dasharray: 2 3; stroke-width: .5; }
 .live-chart-axis { stroke: #d9e0e4; stroke-width: .65; }
 .live-chart-label { fill: #8b96a2; font-family: inherit; font-size: 9px; }
@@ -33,6 +32,19 @@
 .live-chart-line.axis-x { stroke: #129a8c; }
 .live-chart-line.axis-y { stroke: #5685d3; }
 .live-chart-line.axis-z { stroke: #dc9a32; }
+.live-3d-chart { display: block; height: auto; margin-top: 4px; overflow: visible; width: 100%; }
+.live-3d-reference { fill: #f9fbfb; stroke: #dfe7e8; stroke-dasharray: 3 4; stroke-width: 1; }
+.live-3d-axis line { stroke: currentColor; stroke-width: 1.5; }
+.live-3d-axis text { fill: currentColor; font-family: inherit; font-size: 13px; font-weight: 700; }
+.live-3d-vector { stroke: #25384d; stroke-width: 3; }
+.live-3d-vector-arrow { fill: #25384d; }
+.live-3d-origin { fill: #25384d; }
+.live-3d-label { fill: #8b96a2; font-family: inherit; font-size: 10px; }
+.live-3d-value { fill: #405064; font-family: inherit; font-size: 10px; font-weight: 600; }
+.telemetry-motion-status { align-items: center; display: flex; font-size: 9px; gap: 6px; justify-content: flex-end; margin-top: 8px; }
+.telemetry-motion-status i { background: currentColor; border-radius: 50%; height: 6px; width: 6px; }
+.telemetry-motion-status.is-still { color: #8490a0; }
+.telemetry-motion-status.is-moving { color: #16866f; font-weight: 650; }
 .live-chart-empty { align-items: center; color: #8995a3; display: flex; font-size: 10px; height: 210px; justify-content: center; }
 .live-history-chart { display: block; height: 135px; margin-top: 16px; overflow: visible; width: 100%; }
 .live-history-chart .live-chart-line { stroke-width: 1.4; }

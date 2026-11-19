@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,11 +11,18 @@ import main
 
 
 def make_window(amplitude: float = 1.0, temperature: float = 42.0) -> dict[str, object]:
-    samples = (amplitude * np.sin(2 * np.pi * 50 * np.arange(128) / 1000)).tolist()
+    time_points = np.arange(128)
+    samples = [
+        {
+            "x_m_s2": float(amplitude * np.sin(2 * np.pi * 50 * index / 1000)),
+            "y_m_s2": 0.0,
+            "z_m_s2": 9.81,
+        }
+        for index in time_points
+    ]
     return {
-        "vibration_samples": samples,
+        "acceleration_samples": samples,
         "sample_rate_hz": 1000,
-        "rpm": 1500,
         "temperature_c": temperature,
         "current_amps": 4.2,
     }
@@ -60,7 +68,47 @@ class EdgeAiApiTests(unittest.TestCase):
         response = self.client.post("/v1/motors/M-48201/analyze", json=make_window(amplitude=2.0))
         self.assertEqual(response.status_code, 200)
         self.assertIn(response.json()["status"], {"warning", "critical"})
-        self.assertEqual(response.json()["contributing_feature"], "vibration_rms_mm_s")
+        self.assertEqual(
+            response.json()["contributing_feature"],
+            "acceleration_vector_rms_m_s2",
+        )
+
+    def test_acceleration_features_use_meters_per_second_squared(self) -> None:
+        self.learn_baseline()
+        response = self.client.post("/v1/motors/M-48201/analyze", json=make_window())
+        features = response.json()["features"]
+
+        self.assertIn("acceleration_vector_rms_m_s2", features)
+        self.assertIn("acceleration_peak_to_peak_m_s2", features)
+        self.assertNotIn("vibration_rms_mm_s", features)
+
+    def test_old_vibration_payload_is_rejected(self) -> None:
+        response = self.client.post(
+            "/v1/motors/M-48201/analyze",
+            json={
+                "vibration_samples": [0.0] * 16,
+                "sample_rate_hz": 100,
+                "rpm": 1500,
+                "temperature_c": 25,
+                "current_amps": 1,
+            },
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_old_feature_schema_baseline_requires_relearning(self) -> None:
+        old_baseline = {
+            "healthy_windows": 5,
+            "median": {"vibration_rms_mm_s": 1.0},
+            "mad": {"vibration_rms_mm_s": 0.1},
+        }
+        (self.data_directory / "M-48201.json").write_text(
+            json.dumps(old_baseline),
+            encoding="utf-8",
+        )
+
+        response = self.client.post("/v1/motors/M-48201/analyze", json=make_window())
+
+        self.assertEqual(response.status_code, 409)
 
     def test_baseline_requires_five_healthy_windows(self) -> None:
         response = self.client.post(

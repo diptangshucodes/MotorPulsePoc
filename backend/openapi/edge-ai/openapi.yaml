@@ -27,11 +27,11 @@ paths:
                   - service
       tags:
         - Health
-  /v1/motors/{motorId}/analyze:
+  /v1/motors/{motor_id}/analyze:
     post:
       operationId: MotorAnalysis_analyzeWindow
       parameters:
-        - name: motorId
+        - name: motor_id
           in: path
           required: true
           schema:
@@ -51,11 +51,11 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/SensorWindow'
-  /v1/motors/{motorId}/baseline:
+  /v1/motors/{motor_id}/baseline:
     post:
       operationId: MotorAnalysis_learnHealthyBaseline
       parameters:
-        - name: motorId
+        - name: motor_id
           in: path
           required: true
           schema:
@@ -77,42 +77,58 @@ paths:
               $ref: '#/components/schemas/HealthyBaselineRequest'
 components:
   schemas:
+    AccelerationSample:
+      type: object
+      required:
+        - x_m_s2
+        - y_m_s2
+        - z_m_s2
+      properties:
+        x_m_s2:
+          type: number
+          format: double
+        y_m_s2:
+          type: number
+          format: double
+        z_m_s2:
+          type: number
+          format: double
     AnalyzedFeatures:
       type: object
       required:
-        - vibrationRmsMmS
-        - vibrationPeakToPeakMmS
-        - dominantFrequencyHz
-        - temperatureC
-        - currentAmps
+        - acceleration_vector_rms_m_s2
+        - acceleration_peak_to_peak_m_s2
+        - dominant_frequency_hz
+        - temperature_c
+        - current_amps
       properties:
-        vibrationRmsMmS:
+        acceleration_vector_rms_m_s2:
           type: number
           format: double
-        vibrationPeakToPeakMmS:
+        acceleration_peak_to_peak_m_s2:
           type: number
           format: double
-        dominantFrequencyHz:
+        dominant_frequency_hz:
           type: number
           format: double
-        temperatureC:
+        temperature_c:
           type: number
           format: double
-        currentAmps:
+        current_amps:
           type: number
           format: double
     AnomalyAnalysis:
       type: object
       required:
-        - motorId
+        - motor_id
         - status
-        - anomalyScore
+        - anomaly_score
         - confidence
         - explanation
-        - contributingFeature
+        - contributing_feature
         - features
       properties:
-        motorId:
+        motor_id:
           type: string
         status:
           type: string
@@ -120,7 +136,7 @@ components:
             - normal
             - warning
             - critical
-        anomalyScore:
+        anomaly_score:
           type: number
           format: double
         confidence:
@@ -129,7 +145,7 @@ components:
             - baseline
         explanation:
           type: string
-        contributingFeature:
+        contributing_feature:
           type: string
         features:
           $ref: '#/components/schemas/AnalyzedFeatures'
@@ -145,14 +161,14 @@ components:
     LearnedBaseline:
       type: object
       required:
-        - motorId
-        - healthyWindows
+        - motor_id
+        - healthy_windows
         - features
         - saved
       properties:
-        motorId:
+        motor_id:
           type: string
-        healthyWindows:
+        healthy_windows:
           type: integer
           format: int32
         features:
@@ -165,27 +181,25 @@ components:
     SensorWindow:
       type: object
       required:
-        - vibrationSamples
-        - sampleRateHz
-        - rpm
-        - temperatureC
-        - currentAmps
+        - acceleration_samples
+        - sample_rate_hz
+        - temperature_c
+        - current_amps
       properties:
-        vibrationSamples:
+        acceleration_samples:
           type: array
           items:
-            type: number
-            format: double
-        sampleRateHz:
+            $ref: '#/components/schemas/AccelerationSample'
+        sample_rate_hz:
           type: number
           format: double
         rpm:
           type: number
           format: double
-        temperatureC:
+        temperature_c:
           type: number
           format: double
-        currentAmps:
+        current_amps:
           type: number
           format: double
 servers:

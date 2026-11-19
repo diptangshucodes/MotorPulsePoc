@@ -13,21 +13,32 @@ MotorId = Annotated[str, ApiPath(pattern=r"^[A-Za-z0-9_-]{1,64}$")]
 MIN_HEALTHY_WINDOWS = 5
 MAX_SAMPLES_PER_WINDOW = 8192
 FEATURE_NAMES = (
-    "vibration_rms_mm_s",
-    "vibration_peak_to_peak_mm_s",
+    "acceleration_vector_rms_m_s2",
+    "acceleration_peak_to_peak_m_s2",
     "dominant_frequency_hz",
     "temperature_c",
     "current_amps",
 )
 
 
+class AccelerationSample(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x_m_s2: float
+    y_m_s2: float
+    z_m_s2: float
+
+
 class SensorWindow(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    vibration_samples: list[float] = Field(min_length=16, max_length=MAX_SAMPLES_PER_WINDOW)
+    acceleration_samples: list[AccelerationSample] = Field(
+        min_length=16,
+        max_length=MAX_SAMPLES_PER_WINDOW,
+    )
     sample_rate_hz: float = Field(gt=0, le=100_000)
-    rpm: float = Field(ge=0, le=100_000)
-    temperature_c: float = Field(ge=0, le=500)
+    rpm: float | None = Field(default=None, ge=0, le=100_000)
+    temperature_c: float = Field(ge=-55, le=125)
     current_amps: float = Field(ge=0, le=100_000)
 
 
@@ -38,8 +49,8 @@ class BaselineRequest(BaseModel):
 
 
 class FeatureValues(BaseModel):
-    vibration_rms_mm_s: float
-    vibration_peak_to_peak_mm_s: float
+    acceleration_vector_rms_m_s2: float
+    acceleration_peak_to_peak_m_s2: float
     dominant_frequency_hz: float
     temperature_c: float
     current_amps: float
@@ -86,18 +97,31 @@ def _baseline_path(motor_id: str) -> Path:
 
 
 def _extract_features(window: SensorWindow) -> dict[str, float]:
-    samples = np.asarray(window.vibration_samples, dtype=np.float64)
+    samples = np.asarray(
+        [
+            [sample.x_m_s2, sample.y_m_s2, sample.z_m_s2]
+            for sample in window.acceleration_samples
+        ],
+        dtype=np.float64,
+    )
     if not np.all(np.isfinite(samples)):
-        raise HTTPException(status_code=422, detail="Vibration samples must be finite numbers.")
+        raise HTTPException(status_code=422, detail="Acceleration samples must be finite numbers.")
 
-    centered_samples = samples - np.mean(samples)
-    spectrum = np.abs(np.fft.rfft(centered_samples))
+    centered_samples = samples - np.mean(samples, axis=0)
+    spectrum = np.abs(np.fft.rfft(centered_samples, axis=0))
     frequencies = np.fft.rfftfreq(len(centered_samples), d=1 / window.sample_rate_hz)
-    dominant_frequency = float(frequencies[1 + np.argmax(spectrum[1:])]) if len(spectrum) > 1 else 0.0
+    nonzero_spectrum = spectrum[1:, :]
+    if nonzero_spectrum.size and np.max(nonzero_spectrum) > 0:
+        dominant_bin, _ = np.unravel_index(np.argmax(nonzero_spectrum), nonzero_spectrum.shape)
+        dominant_frequency = float(frequencies[dominant_bin + 1])
+    else:
+        dominant_frequency = 0.0
 
     return {
-        "vibration_rms_mm_s": float(np.sqrt(np.mean(np.square(centered_samples)))),
-        "vibration_peak_to_peak_mm_s": float(np.ptp(samples)),
+        "acceleration_vector_rms_m_s2": float(
+            np.sqrt(np.mean(np.sum(np.square(centered_samples), axis=1)))
+        ),
+        "acceleration_peak_to_peak_m_s2": float(np.max(np.ptp(samples, axis=0))),
         "dominant_frequency_hz": dominant_frequency,
         "temperature_c": window.temperature_c,
         "current_amps": window.current_amps,
@@ -111,7 +135,12 @@ def _write_baseline(motor_id: str, features: list[dict[str, float]]) -> dict[str
     }
     medians = {name: float(np.median(values)) for name, values in columns.items()}
     mads = {name: float(np.median(np.abs(values - medians[name]))) for name, values in columns.items()}
-    baseline = {"healthy_windows": len(features), "median": medians, "mad": mads}
+    baseline = {
+        "feature_schema_version": 2,
+        "healthy_windows": len(features),
+        "median": medians,
+        "mad": mads,
+    }
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     file_descriptor, temporary_path = tempfile.mkstemp(prefix=f".{motor_id}-", dir=DATA_DIR, text=True)
@@ -137,6 +166,11 @@ def _load_baseline(motor_id: str) -> dict[str, object]:
         baseline = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise HTTPException(status_code=500, detail=f"Could not read the saved baseline for {motor_id}.") from error
+    if not isinstance(baseline, dict) or baseline.get("feature_schema_version") != 2:
+        raise HTTPException(
+            status_code=409,
+            detail=f"The saved baseline for {motor_id} uses an older feature schema; learn it again.",
+        )
     return baseline
 
 

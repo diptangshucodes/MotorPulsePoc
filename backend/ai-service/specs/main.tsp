@@ -6,12 +6,18 @@ using TypeSpec.Http;
 @server("http://localhost:8001", "Local edge AI service")
 namespace MotorPulse.EdgeAI;
 
+model AccelerationSample {
+  x_m_s2: float64;
+  y_m_s2: float64;
+  z_m_s2: float64;
+}
+
 model SensorWindow {
-  vibrationSamples: float64[];
-  sampleRateHz: float64;
-  rpm: float64;
-  temperatureC: float64;
-  currentAmps: float64;
+  acceleration_samples: AccelerationSample[];
+  sample_rate_hz: float64;
+  rpm?: float64;
+  temperature_c: float64;
+  current_amps: float64;
 }
 
 model HealthyBaselineRequest {
@@ -19,27 +25,27 @@ model HealthyBaselineRequest {
 }
 
 model LearnedBaseline {
-  motorId: string;
-  healthyWindows: int32;
+  motor_id: string;
+  healthy_windows: int32;
   features: Record<float64>;
   saved: boolean;
 }
 
 model AnalyzedFeatures {
-  vibrationRmsMmS: float64;
-  vibrationPeakToPeakMmS: float64;
-  dominantFrequencyHz: float64;
-  temperatureC: float64;
-  currentAmps: float64;
+  acceleration_vector_rms_m_s2: float64;
+  acceleration_peak_to_peak_m_s2: float64;
+  dominant_frequency_hz: float64;
+  temperature_c: float64;
+  current_amps: float64;
 }
 
 model AnomalyAnalysis {
-  motorId: string;
+  motor_id: string;
   status: "normal" | "warning" | "critical";
-  anomalyScore: float64;
+  anomaly_score: float64;
   confidence: "baseline";
   explanation: string;
-  contributingFeature: string;
+  contributing_feature: string;
   features: AnalyzedFeatures;
 }
 
@@ -53,20 +59,20 @@ interface Health {
   };
 }
 
-@route("/v1/motors/{motorId}")
+@route("/v1/motors/{motor_id}")
 @tag("Edge AI")
 interface MotorAnalysis {
   @post
   @route("/baseline")
   learnHealthyBaseline(
-    @path motorId: string,
+    @path motor_id: string,
     @body body: HealthyBaselineRequest,
   ): LearnedBaseline;
 
   @post
   @route("/analyze")
   analyzeWindow(
-    @path motorId: string,
+    @path motor_id: string,
     @body body: SensorWindow,
   ): AnomalyAnalysis;
 }

@@ -54,10 +54,11 @@ The Raspberry Pi is the intended local host for the broker, edge AI service, and
 | Component | Purpose | Current project status |
 |---|---|---|
 | Motor / asset | Equipment whose condition should be monitored | Ten illustrative assets are defined in the dashboard. |
-| Sensors | Measure vibration and, where instrumented, temperature, current, RPM, or power | Sensor-to-ESP32 acquisition is not implemented in the current Wokwi sketch. The connection diagram is an integration concept. |
-| ESP32 | Read sensors and send device messages over Wi-Fi | Current sketch connects to the Wokwi network and publishes the text `hi` to `esp32/switch` when a debounced button is pressed. It does not publish sensor samples. |
-| Mosquitto | Local MQTT message broker | Included in `docker-compose.yml`; the configured port is 1883. A broker is present, but there is no sensor-window ingestion pipeline from MQTT to the AI service. |
-| Edge AI service | Learn a per-motor baseline and analyze a sensor window | Implemented as a standalone FastAPI service with `/health`, baseline, and analysis endpoints. It accepts REST requests; it is not wired to MQTT or the React dashboard. |
+| Sensors | Measure vibration and, where instrumented, temperature, current, RPM, or power | The ESP32 sketch reads an MPU6050, DS18B20, and ACS712. Physical wiring, sensor calibration, mounting, and motor-on tests still need verification. The Wokwi diagram currently shows only the MPU6050. |
+| ESP32 | Read sensors and send device messages over Wi-Fi | Publishes one raw X/Y/Z acceleration reading per MQTT message at a nominal 100 Hz, with the most recent valid motor temperature and one-second current RMS as optional fields. It omits unavailable temperature/current readings rather than substituting dummy values. |
+| Mosquitto | Local MQTT message broker | Included in `docker-compose.yml`; the configured port is 1883. |
+| MQTT telemetry logger | Validate, retain, label, and prepare motor telemetry | `mqtt_client.py` stores sensor fields, assembles 128-sample windows when sensor readings are fresh, and exposes local window-label/list endpoints. It does not automatically forward windows to the AI API. |
+| Edge AI service | Learn a per-motor baseline and analyze a sensor window | Implemented as a standalone FastAPI service with `/health`, baseline, and analysis endpoints. Window bodies can be submitted from the telemetry API; the service is not automatically wired to MQTT or the React dashboard. |
 | Node / Express service | Basic backend example | `backend/server.js` exposes only `/api/hello` on port 5000; it is not the dashboard data or command API. |
 | React dashboard | Demonstrate fleet condition, diagnostics, alerts, controls, energy, and ROI workflows | Six interactive screens are implemented. Their values and actions are local demo state; telemetry and controls are not connected to the broker or physical motors. |
 | Raspberry Pi | Intended edge host | Intended deployment target, subject to confirming OS and CPU architecture and testing the containers there. |
@@ -68,14 +69,16 @@ The Raspberry Pi is the intended local host for the broker, edge AI service, and
 
 The service in `backend/ai-service/main.py` is an explainable statistical anomaly detector, not a trained fault classifier or remaining-useful-life model.
 
-- A sensor window includes vibration samples, sample rate, RPM, temperature, and current.
-- Vibration RMS, peak-to-peak value, and dominant frequency are extracted alongside temperature and current.
+- A sensor window includes three-axis acceleration samples in m/s^2, sample rate, temperature, and one-second RMS current. RPM is optional because the current firmware does not measure it.
+- The service removes each axis mean and extracts acceleration vector RMS, maximum axis peak-to-peak, dominant frequency, temperature, and current.
 - A motor-specific baseline is learned from at least five known-healthy windows. The service stores baseline medians and median absolute deviations in its data directory.
 - For each new window, the service measures feature deviations from that motor's baseline and returns a status (`normal`, `warning`, or `critical`), an anomaly score, the strongest contributing feature, and a plain-language explanation.
-- The API accepts windows with at least 16 and up to 8,192 vibration samples; at least 128 samples is suggested as a better starting point for the demo. Sample rate and window length affect which frequencies can be distinguished.
+- The API accepts windows with at least 16 and up to 8,192 three-axis acceleration samples. The MQTT logger currently creates 128-sample windows at a nominal 100 Hz. Sample rate and window length affect which frequencies can be distinguished.
 - The current API is `POST /v1/motors/{motor_id}/baseline` and `POST /v1/motors/{motor_id}/analyze`. Interactive API documentation is available at `/docs` when the service is running.
 
 **What the edge AI does not do:** identify a confirmed mechanical fault, calculate a validated failure probability or failure date, prove that a machine is safe, or issue motor commands. Prototype scores must not be used as a safety function or represented as a validated remaining-life prediction.
+
+The telemetry logger creates prepared windows and allows a user to mark individual windows as `healthy`, `unknown`, `suspected_fault`, or `confirmed_fault`. Only technician-verified healthy windows should train the current baseline. The three sensor types provide complementary condition context, but adding sensors alone does not establish improved accuracy. At 100 Hz, the MPU6050 is suitable only for lower-frequency demonstration signals, not comprehensive bearing-fault detection. Hold speed/load constant until RPM is measured and incorporated into operating-condition handling.
 
 ## Dashboard experience
 
@@ -122,18 +125,52 @@ The React app has tests for the ten-motor overview, navigation to motor detail, 
 
 ## Sensors and hardware direction
 
-The final sensor selection should follow the motor, mounting method, environment, required frequency range, and desired maintenance decision. The current repository does not establish a selected sensor bill of materials.
+The current ESP32 proof-of-concept sketch is configured for:
 
-For a proof-of-concept investigation, consider:
+- **Vibration:** MPU6050 acceleration on I2C SDA GPIO 21 / SCL GPIO 22. It publishes raw X/Y/Z acceleration in m/s^2 at a nominal 100 Hz. The accelerometer is configured for ±8 g with a 44 Hz filter bandwidth; this is suitable for a low-frequency expo demonstration, not high-frequency bearing-fault diagnosis. Rigid mounting and higher-rate, calibrated acquisition may be needed for a real asset.
+- **Temperature:** DS18B20 data on GPIO 4. The sketch requests asynchronous 10-bit conversions and adds `temperature_c` and its sample timestamp when a valid reading is available. The probe should be attached securely to the motor casing at a repeatable point; it measures surface temperature, not winding temperature.
+- **Current:** ACS712 output is read on ADC1 GPIO 34. The sketch calculates one-second RMS current from ADC samples, using a zero-current offset captured during startup. The configured sensitivity is 185 mV/A (ACS712-5A); change it to 100 mV/A for the 20 A version or about 66 mV/A for the 30 A version, and calibrate against a suitable reference. The example assumes a 1/2 output divider ratio (10 kΩ from module output to ADC, 10 kΩ from ADC to ground) to leave margin below the ESP32 input limit for a 5 V sensor output. Verify the module, divider, ADC readings, and actual current before relying on the result.
+- **Speed / RPM:** not currently measured by the sketch. It is optional in the prototype API and is not currently used as a model feature; keep speed/load steady for comparisons and add a tachometer, encoder, or trusted drive measurement before handling variable-speed operation.
+- **ESP32 and edge host:** the ESP32 publishes to the configured MQTT topic. Mosquitto, the telemetry logger, AI API, and React dashboard are not yet a complete end-to-end live pipeline.
 
-- **Vibration:** a securely mounted accelerometer appropriate to the target frequency range and expected vibration. Sensor bandwidth, sample rate, mounting, and signal conditioning must be considered together.
-- **Temperature:** a contact sensor or suitable non-contact measurement, with placement chosen for the asset and measurement objective.
-- **Current / power:** appropriately rated, isolated measurement hardware installed and reviewed by qualified personnel. Do not connect an ESP32 directly to hazardous mains.
-- **Speed / RPM:** a tachometer, encoder, or reliable drive-provided speed measurement if operating-speed context is needed for frequency analysis.
-- **ESP32:** performs local sampling and device communications only after the acquisition circuit, sampling, timestamps, calibration, and network behavior have been verified.
-- **Raspberry Pi:** local broker, edge service, storage, and dashboard host in the intended demonstrator.
+### ESP32 MQTT message
 
-Sensor choice, mounting, electrical isolation, enclosure/environmental protection, sampling rate, calibration, and safety review are prerequisites to collecting trustworthy plant data.
+The sketch publishes one JSON message for each acceleration sample on `esp32/switch`. The acceleration timestamp is milliseconds since ESP32 boot. `temperature_c` and its timestamp appear only after a valid DS18B20 reading; `current_amps` and its timestamp/count appear only after a valid one-second current window.
+
+```json
+{
+  "schema_version": 2,
+  "message_type": "acceleration",
+  "motor_id": "motor-01",
+  "sample_rate_hz": 100,
+  "sample_time_ms": 12345,
+  "acceleration_unit": "m/s^2",
+  "acceleration_scale": 0.001,
+  "accel_x_milli_ms2": 120,
+  "accel_y_milli_ms2": -45,
+  "accel_z_milli_ms2": 9810,
+  "temperature_c": 31.5,
+  "temperature_sample_time_ms": 12340,
+  "current_amps": 0.42,
+  "current_unit": "A",
+  "current_measurement": "rms_1s",
+  "current_sample_time_ms": 12300,
+  "current_sample_count": 1980
+}
+```
+
+The values above are illustrative. Acceleration axes are integer milli-m/s^2 values; divide by 1,000 to get m/s^2. The current is a one-second RMS estimate, not an instantaneous reading. These messages are raw telemetry and are not submitted directly to the edge-AI API.
+
+Use the ACS712 only with an appropriately rated, isolated low-voltage expo motor circuit and a correctly rated module. Do not connect ESP32 pins or a hobby breakout directly to hazardous mains. Have qualified personnel review any current-sensing installation on mains-powered equipment. The motor must have no current flowing while the firmware calibrates the ACS712 zero offset at startup.
+
+### Office expo: next steps
+
+1. **Wire and inspect with power off.** Keep the MPU6050 on GPIO 21/22, connect the DS18B20 data line to GPIO 4 with a 4.7 kΩ pull-up to 3.3 V, and route the ACS712 output through the documented divider to GPIO 34. Confirm common ground for the low-voltage sensor circuit and check the ESP32 input voltage before powering it.
+2. **Bring up one sensor at a time.** Confirm the MPU6050 is detected, the DS18B20 produces plausible casing temperatures, and the ACS712 reports near zero with no current and a plausible RMS value under a known low-voltage load. Keep the motor off during firmware startup/current-offset calibration.
+3. **Verify MQTT before the demo.** Start Mosquitto and the telemetry logger, set `MQTT_DATA_SOURCE=real` for physical readings, and confirm messages arrive on `esp32/switch`. Each acceleration message is sent at a nominal 100 Hz; valid temperature and the latest one-second current RMS are additional JSON fields. Temperature/current are currently retained in the raw payload, but are not yet queryable as dedicated telemetry fields or shown by the dashboard.
+4. **Make the mechanical setup repeatable.** Secure the motor and sensor, keep the same sensor position and motor speed/load during healthy captures, and use a guarded low-voltage setup. Do not create real damaged bearings or unsafe imbalance for the expo; use clearly labeled simulated/test data for anomaly demonstrations.
+5. **Label and prepare windows.** The MQTT logger now creates 128-sample windows, stores the sensor values, and exposes endpoints to label/list them. Mark `healthy` only after a normal operation has been verified; leave unverified windows as `unknown`. Keep speed/load steady because RPM is not currently measured.
+6. **Establish and evaluate the baseline.** Fetch at least five verified healthy, real-source windows, submit them to the edge AI baseline endpoint, and test with later windows from a separate run. Review alerts with a human. Keep simulated and physical data separate. For a meaningful fault classifier, gather correctly labeled, representative data using a safe training rig; the current baseline detector does not learn fault categories or predict failure dates.
 
 ## Ontario / Canada context
 

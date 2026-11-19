@@ -4,14 +4,18 @@ import tempfile
 import unittest
 from contextlib import closing
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 from mqtt_client import (
+    append_reading_to_sensor_window,
     calculate_acceleration_features,
     get_telemetry_snapshot,
     initialize_database,
+    parse_reading,
     parse_window,
     start_telemetry_api,
+    store_reading,
+    store_sensor_window,
     store_window,
 )
 
@@ -32,6 +36,38 @@ def make_payload(samples=None) -> bytes:
             "acceleration_scale": 0.001,
             "sample_format": "[offset_us, ax_milli_ms2, ay_milli_ms2, az_milli_ms2]",
             "samples": samples,
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def make_reading_payload(
+    sample_time_ms=1234,
+    x=250,
+    y=-500,
+    z=9800,
+    sample_rate_hz=20,
+    motor_id="motor-01",
+) -> bytes:
+    return json.dumps(
+        {
+            "schema_version": 2,
+            "message_type": "acceleration",
+            "motor_id": motor_id,
+            "sample_rate_hz": sample_rate_hz,
+            "sample_time_ms": sample_time_ms,
+            "acceleration_unit": "m/s^2",
+            "acceleration_scale": 0.001,
+            "accel_x_milli_ms2": x,
+            "accel_y_milli_ms2": y,
+            "accel_z_milli_ms2": z,
+            "temperature_c": 31.5,
+            "temperature_sample_time_ms": sample_time_ms,
+            "current_amps": 0.42,
+            "current_unit": "A",
+            "current_measurement": "rms_1s",
+            "current_sample_time_ms": (sample_time_ms // 1000) * 1000,
+            "current_sample_count": 1980,
         },
         separators=(",", ":"),
     ).encode("utf-8")
@@ -59,6 +95,82 @@ class TelemetryWindowTests(unittest.TestCase):
         payload["samples"][1][0] = payload["samples"][0][0]
         with self.assertRaisesRegex(ValueError, "strictly increasing"):
             parse_window(json.dumps(payload).encode("utf-8"))
+
+    def test_parse_reading_accepts_raw_mpu6050_payload_and_rejects_invalid_axes(self):
+        reading = parse_reading(make_reading_payload())
+
+        self.assertEqual(reading.motor_id, "motor-01")
+        self.assertEqual(reading.sample_rate_hz, 20.0)
+        self.assertEqual(reading.sample_time_ms, 1234)
+        self.assertEqual(reading.accel_x_milli_ms2, 250)
+        self.assertEqual(reading.accel_y_milli_ms2, -500)
+        self.assertEqual(reading.accel_z_milli_ms2, 9800)
+        self.assertEqual(reading.temperature_c, 31.5)
+        self.assertEqual(reading.current_amps, 0.42)
+        self.assertEqual(reading.current_sample_count, 1980)
+
+        payload = json.loads(make_reading_payload())
+        payload["accel_x_milli_ms2"] = 0.25
+        with self.assertRaisesRegex(ValueError, "axis values must be integers"):
+            parse_reading(json.dumps(payload).encode("utf-8"))
+
+        payload = json.loads(make_reading_payload())
+        del payload["current_sample_count"]
+        with self.assertRaisesRegex(ValueError, "all current measurement fields"):
+            parse_reading(json.dumps(payload).encode("utf-8"))
+
+    def test_acceleration_readings_form_a_window_with_fresh_sensor_values(self):
+        readings = [
+            parse_reading(
+                make_reading_payload(
+                    sample_time_ms=1000 + index * 10,
+                    sample_rate_hz=100,
+                    motor_id="window-motor",
+                )
+            )
+            for index in range(128)
+        ]
+        completed_window = None
+        for reading in readings:
+            completed_window = append_reading_to_sensor_window(reading)
+
+        self.assertIsNotNone(completed_window)
+        batch, sensor_window = completed_window
+        self.assertEqual(len(batch), 128)
+        self.assertEqual(sensor_window["sample_rate_hz"], 100.0)
+        self.assertEqual(sensor_window["temperature_c"], 31.5)
+        self.assertEqual(sensor_window["current_amps"], 0.42)
+        self.assertEqual(sensor_window["acceleration_samples"][0]["x_m_s2"], 0.25)
+
+    def test_window_rejects_stale_slow_sensor_values(self):
+        readings = [
+            parse_reading(
+                make_reading_payload(
+                    sample_time_ms=10_000 + index * 10,
+                    sample_rate_hz=100,
+                    motor_id="stale-window-motor",
+                )
+            )
+            for index in range(128)
+        ]
+        readings = [
+            parse_reading(
+                json.dumps(
+                    {
+                        **json.loads(reading.payload_json),
+                        "temperature_sample_time_ms": 1000,
+                        "current_sample_time_ms": 1000,
+                    }
+                ).encode("utf-8")
+            )
+            for reading in readings
+        ]
+
+        completed_window = None
+        for reading in readings:
+            completed_window = append_reading_to_sensor_window(reading)
+
+        self.assertIsNone(completed_window)
 
     def test_calculate_acceleration_features_removes_gravity_and_measures_variation(self):
         samples = [
@@ -103,6 +215,35 @@ class TelemetryWindowTests(unittest.TestCase):
         self.assertAlmostEqual(row[8], 0.0)
         self.assertAlmostEqual(row[9], 9.81)
         self.assertAlmostEqual(row[10], 0.0)
+
+    def test_raw_readings_are_stored_and_returned_without_window_aggregation(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = Path(temporary_directory) / "telemetry.sqlite3"
+            initialize_database(database_path)
+            store_reading(
+                database_path,
+                "esp32/switch",
+                parse_reading(make_reading_payload(sample_time_ms=1000)),
+            )
+            store_reading(
+                database_path,
+                "esp32/switch",
+                parse_reading(make_reading_payload(sample_time_ms=1050, x=750)),
+            )
+
+            snapshot = get_telemetry_snapshot(database_path, "motor-01", history_limit=5)
+
+        self.assertEqual(snapshot["latest"]["sample_count"], 1)
+        self.assertEqual(snapshot["latest"]["sample_time_ms"], 1050)
+        self.assertEqual(snapshot["latest"]["samples"], [
+            {"offset_s": 0.0, "x_ms2": 0.75, "y_ms2": -0.5, "z_ms2": 9.8},
+        ])
+        self.assertEqual(snapshot["latest"]["temperature"]["value_c"], 31.5)
+        self.assertEqual(snapshot["latest"]["current"]["value_amps_rms"], 0.42)
+        self.assertEqual(len(snapshot["history"]), 2)
+        self.assertEqual(snapshot["history"][-1]["acceleration"]["x_ms2"], 0.75)
+        self.assertNotIn("features", snapshot["latest"])
+        self.assertFalse(snapshot["mqtt_connected"])
 
     def test_initialize_database_migrates_and_backfills_existing_windows(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -203,6 +344,7 @@ class TelemetryWindowTests(unittest.TestCase):
                     body = json.loads(response.read())
                     self.assertEqual(response.status, 200)
                     self.assertEqual(response.headers["Access-Control-Allow-Origin"], "*")
+                    self.assertFalse(body["mqtt_connected"])
             finally:
                 server.shutdown()
                 server.server_close()
@@ -210,6 +352,60 @@ class TelemetryWindowTests(unittest.TestCase):
         self.assertEqual(body["motor_id"], "motor-01")
         self.assertEqual(body["latest"]["data_source"], "simulated")
         self.assertEqual(len(body["latest"]["samples"]), 128)
+
+    def test_telemetry_api_labels_and_filters_training_windows(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            database_path = Path(temporary_directory) / "telemetry.sqlite3"
+            initialize_database(database_path)
+            readings = [
+                parse_reading(
+                    make_reading_payload(
+                        sample_time_ms=1000 + index * 10,
+                        sample_rate_hz=100,
+                        motor_id="label-motor",
+                    )
+                )
+                for index in range(128)
+            ]
+            window_batch = None
+            for reading in readings:
+                window_batch = append_reading_to_sensor_window(reading)
+            self.assertIsNotNone(window_batch)
+            batch, sensor_window = window_batch
+            window_id = store_sensor_window(
+                database_path,
+                "esp32/switch",
+                batch,
+                sensor_window,
+                data_source="real",
+            )
+            server = start_telemetry_api(database_path, host="127.0.0.1", port=0)
+            try:
+                body = json.dumps(
+                    {"label": "healthy", "notes": "Inspected; steady operation."}
+                ).encode("utf-8")
+                request = Request(
+                    f"http://127.0.0.1:{server.server_port}/api/motors/label-motor/"
+                    f"windows/{window_id}/label",
+                    data=body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urlopen(request) as response:
+                    self.assertEqual(response.status, 200)
+
+                with urlopen(
+                    f"http://127.0.0.1:{server.server_port}/api/motors/label-motor/"
+                    "windows?label=healthy&source=real"
+                ) as response:
+                    result = json.loads(response.read())
+            finally:
+                server.shutdown()
+                server.server_close()
+
+        self.assertEqual(len(result["windows"]), 1)
+        self.assertEqual(result["windows"][0]["label"], "healthy")
+        self.assertEqual(result["windows"][0]["sensor_window"]["current_amps"], 0.42)
 
 
 if __name__ == "__main__":
