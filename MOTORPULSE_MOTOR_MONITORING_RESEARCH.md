@@ -241,7 +241,97 @@ The API’s minimum of five healthy windows is only a request-validation/code mi
 
 Motor type helps decide which features and interpretations are appropriate; it does not supply the baseline values. Even two motors of the same model can have different healthy signatures because of mounting, load, installation, and sensor differences. A fleet-level model may eventually share learned patterns among compatible assets, but it should still retain asset-specific calibration and be evaluated on motors not used for training.
 
-#### 8. Useful additional features to calculate later
+#### 8. End-to-end data plan across different motor types
+
+The practical goal is not to force every motor into an identical raw-data pattern. It is to preserve measurements in a consistent, well-described format, calculate only valid features, and compare each asset with an appropriate healthy reference.
+
+**A. Define one monitoring question first.** For the first release, use: “Has this specific motor’s measured condition changed from its verified healthy behavior under comparable operation?” This is anomaly detection. A different question—“Is this bearing fault type X?”—needs fault-specific labels and validation. “How long until failure?” needs degradation/run-to-failure evidence.
+
+**B. Capture raw streams and context.** Store vibration samples as time-series data and slower signals as their own time-stamped measurements. Do not reduce the stream to a single CSV row before retaining the raw window. Each window should be linked to:
+
+- `asset_id`, `motor_type`, `drive_type`, `driven_equipment`, nameplate details where verified;
+- sensor ID/type/location/orientation, calibration, firmware, units, actual sample rate, and feature-pipeline version;
+- UTC window start/end, device sequence/timestamps, missing-sample and quality flags;
+- actual RPM, run/stop/transient state, drive mode/frequency, load/process proxy, and ambient conditions where available;
+- data source (`real`, `test_rig`, `public_dataset`, or `simulated`);
+- independently reviewed condition label and inspection/work-order evidence, when available.
+
+An illustrative **window-level feature record** might look like this (values are placeholders, not measured MotorPulse results):
+
+```json
+{
+  "asset_id": "motor-01",
+  "motor_profile": {
+    "motor_type": "induction",
+    "drive_type": "vfd",
+    "driven_equipment": "pump",
+    "profile_verified": true
+  },
+  "window": {
+    "start_utc": "2026-11-26T14:00:00Z",
+    "duration_s": 1.28,
+    "sample_rate_hz": 100,
+    "source": "real",
+    "quality": "valid",
+    "rpm": 1480,
+    "run_state": "steady",
+    "load_pct": null
+  },
+  "sensor_profile": {
+    "vibration": "triaxial_accelerometer",
+    "location": "drive_end_bearing",
+    "mounting": "rigid",
+    "temperature": "motor_casing",
+    "current": "one_second_rms"
+  },
+  "features": {
+    "accel_vector_rms_m_s2": 0.42,
+    "accel_x_rms_m_s2": 0.21,
+    "accel_y_rms_m_s2": 0.18,
+    "accel_z_rms_m_s2": 0.31,
+    "dominant_frequency_hz": 24.2,
+    "temperature_c": 43.1,
+    "current_rms_a": 2.4
+  },
+  "label": {
+    "status": "unknown",
+    "reviewed_by": null,
+    "evidence_id": null
+  }
+}
+```
+
+In the current prototype, not all of these fields are captured or used: RPM is accepted but ignored by feature extraction, load/profile metadata is not used by the baseline, and only the five documented features enter the detector. Treat the example as a target data contract, not a description of current API behavior.
+
+**C. Use a shared feature vocabulary, but not a shared raw threshold.**
+
+- **Common across compatible sensor profiles:** calibrated per-axis and vector acceleration statistics; temperature values/trends; current values at the measurement resolution actually available; quality and operating-context fields.
+- **Conditional features:** RPM orders require actual RPM; current-spectrum features require raw current waveforms at sufficient sampling/quality; servo following error requires drive feedback; bearing-envelope features require appropriate vibration bandwidth.
+- Represent missing/unavailable values explicitly with a quality/status field. Do not replace missing values with zero, since zero is a real measurement.
+- Record feature units, formula, window length, sample rate/filter, sensor identity, and schema version. Only compare a feature across assets if these semantics and measurement conditions are compatible.
+
+**D. Use a staged model strategy.**
+
+1. Establish a separate healthy baseline for each physical motor. Initially constrain it to a stable, known speed/load regime.
+2. If the motor runs at multiple regimes, collect verified-healthy sessions in a few meaningful speed/load bands. Either keep a baseline per asset/regime or, later, model expected feature values conditional on RPM/load and score deviations from those expectations.
+3. If there is enough data for a family-level model, train only on compatible motor/drive/sensor cohorts and include operating context. Keep asset-specific calibration/baseline. Use `unknown/out-of-coverage` when a motor or operating point is outside validated coverage.
+4. Build a fault classifier only when there are independent, technician-confirmed examples of each target fault. Keep `normal`, each verified fault class, `sensor_issue`, `operating_change`, and `unknown` conceptually separate; do not let an anomaly alert become its own fault label.
+
+**E. Evaluate generalization honestly.** For each model, reserve later runs and ideally entire motors for test. Do not randomly split adjacent windows: near-identical windows from one capture would leak between train and test. Report per-motor/per-regime false alerts per motor-day or motor-month, actionable-alert rate, event-level recall/precision when confirmed events exist, lead time, data availability, and the number of verified events. If no real verified faults exist, report baseline/anomaly behavior and do not claim fault-class accuracy.
+
+**F. Conclude condition with evidence, not a universal score.** A useful output is:
+
+```text
+data_quality: valid | insufficient | sensor_issue
+coverage: in_baseline | outside_baseline
+condition: normal_range | deviation_observed | review_recommended
+evidence: feature(s), value, asset/regime baseline range, persistence, timestamp
+diagnosis: unavailable unless a separately validated fault model supports it
+```
+
+For example: “Motor-01 vibration RMS is above its verified baseline for this speed range in 6 consecutive valid windows; inspect/review recommended.” That supports technician triage. It does not claim which part failed or when it will fail.
+
+#### 9. Useful additional features to calculate later
 
 Calculate these from properly sampled raw windows—not from the existing 1-second current summary or one FFT peak:
 
